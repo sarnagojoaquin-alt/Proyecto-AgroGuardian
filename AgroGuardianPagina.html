@@ -1,0 +1,2421 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta
+    http-equiv="Content-Security-Policy"
+    content="
+      default-src 'self';
+      script-src 'self' 'unsafe-eval' 'unsafe-inline' https://unpkg.com https://www.gstatic.com https://cdn.jsdelivr.net;
+      connect-src 'self' https://*.firebaseio.com https://www.googleapis.com wss://*.firebaseio.com https://api.openweathermap.org https://nominatim.openstreetmap.org;
+      style-src 'self' 'unsafe-inline' https://unpkg.com;
+      img-src 'self' data: https://unpkg.com https://*.tile.openstreetmap.org;
+    "
+  />
+  <meta http-equiv="Permissions-Policy" content="unload=(self)">
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-database-compat.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script> 
+  <style>
+    body {
+      margin: 0;
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+      background-color: #E4FFA5;
+      color: #2C5F2D;
+    }
+    .navbar {
+      background-color: #7FAD73;
+      padding: 10px;
+      display: flex;
+      justify-content: space-around;
+      flex-wrap: wrap;
+      box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+    }
+    .navbar button {
+      background: none;
+      border: none;
+      color: white;
+      font-size: 16px;
+      margin: 5px;
+      cursor: pointer;
+      padding: 8px 15px;
+      border-radius: 4px;
+      transition: background-color 0.3s;
+    }
+    .navbar button:hover {
+      background-color: rgba(255, 255, 255, 0.2);
+    }
+    .navbar button:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+    .main-content {
+      text-align: center;
+      padding: 20px;
+      max-width: 1200px;
+      margin: 0 auto;
+    }
+    #map {
+      height: 300px;
+      margin: 20px auto;
+      width: 90%;
+      max-width: 700px;
+      border-radius: 10px;
+      box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+    }
+    .button-red {
+      background-color: #e57373;
+      color: white;
+      padding: 10px 20px;
+      border: none;
+      border-radius: 5px;
+      margin-top: 20px;
+      cursor: pointer;
+      font-size: 16px;
+      transition: background-color 0.3s;
+    }
+    .button-red:hover {
+      background-color: #d9534f;
+    }
+    .data-container {
+      background-color: white;
+      border-radius: 10px;
+      padding: 20px;
+      box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+      margin-top: 20px;
+    }
+    .data-item {
+      display: flex;
+      justify-content: space-between;
+      width: 100%;
+      margin: 10px 0;
+      padding-bottom: 10px;
+      border-bottom: 1px solid #e0e0e0;
+    }
+    .data-item:last-child {
+      border-bottom: none;
+    }
+    .data-item span:first-child {
+      font-weight: 600;
+      color: #2C5F2D;
+    }
+    .data-item span:last-child {
+      color: #555;
+    }
+    .hidden {
+      display: none;
+    }
+    .back-button, .save-button {
+      margin: 10px;
+      background-color: #7FAD73;
+      color: white;
+      border: none;
+      padding: 10px 20px;
+      border-radius: 5px;
+      cursor: pointer;
+      font-size: 16px;
+      transition: background-color 0.3s;
+    }
+    .back-button:hover, .save-button:hover {
+      background-color: #5d8d56;
+    }
+    .header {
+      margin-bottom: 20px;
+    }
+    .header h1 {
+      font-size: 2.5rem;
+      margin-bottom: 10px;
+      color: #2C5F2D;
+    }
+    .header p {
+      font-size: 1.2rem;
+      color: #555;
+      max-width: 600px;
+      margin: 0 auto;
+    }
+    .loading {
+      text-align: center;
+      padding: 20px;
+      color: #7FAD73;
+      font-style: italic;
+    }
+    .page-title {
+      color: #2C5F2D;
+      margin-bottom: 20px;
+      position: relative;
+      padding-bottom: 10px;
+    }
+    .page-title::after {
+      content: '';
+      position: absolute;
+      bottom: 0;
+      left: 50%;
+      transform: translateX(-50%);
+      width: 100px;
+      height: 3px;
+      background-color: #7FAD73;
+      border-radius: 2px;
+    }
+    .map-container {
+      position: relative;
+    }
+    .location-marker {
+      position: absolute;
+      top: 10px;
+      right: 10px;
+      background-color: white;
+      padding: 8px 15px;
+      border-radius: 5px;
+      font-size: 14px;
+      box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+      color: #2C5F2D;
+      z-index: 1000;
+    }    
+    .updating {
+      animation: highlightUpdate 1.5s ease;
+    }
+    @keyframes highlightUpdate {
+      0% { background-color: rgba(127, 173, 115, 0.1); }
+      50% { background-color: rgba(127, 173, 115, 0.3); }
+      100% { background-color: rgba(127, 173, 115, 0.1); }
+    }
+    .error {
+      color: #d9534f;
+      font-weight: bold;
+      text-align: center;
+      padding: 20px;
+    }
+    .ultima-actualizacion {
+      text-align: center;
+      margin-top: 10px;
+      color: #666;
+      font-size: 0.9em;
+      font-style: italic;
+    }
+    .good {
+      color: #2E7D32;
+      font-weight: bold;
+    }
+    .bad {
+      color: #C62828;
+      font-weight: bold;
+    }
+    .recommendation-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 20px;
+      margin-bottom: 30px;
+    }
+    .recommendation-card {
+      background-color: white;
+      border-radius: 10px;
+      box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+      overflow: hidden;
+      transition: transform 0.3s ease;
+    }
+    .recommendation-card:hover {
+      transform: translateY(-5px);
+    }
+    .card-header {
+      background-color: #7FAD73;
+      color: white;
+      padding: 15px;
+      font-weight: bold;
+      text-align: center;
+    }
+    .card-body {
+      padding: 15px;
+      min-height: 250px;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      text-align: left;
+    }
+    .task-item {
+      margin-bottom: 15px;
+      padding-bottom: 15px;
+      border-bottom: 1px solid #eee;
+    }
+    .task-item:last-child {
+      border-bottom: none;
+      margin-bottom: 0;
+      padding-bottom: 0;
+    }
+    .task-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 5px;
+    }
+    .task-title {
+      font-weight: 600;
+      color: #2C5F2D;
+    }
+    .task-status {
+      font-weight: bold;
+      font-size: 1.1em;
+    }
+    .status-good {
+      color: #2E7D32;
+    }
+    .status-warning {
+      color: #FF9800;
+    }
+    .status-bad {
+      color: #C62828;
+    }
+    .task-reason {
+      font-size: 0.9em;
+      color: #666;
+      padding-left: 5px;
+    }
+    .conditions-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 20px;
+      margin-bottom: 30px;
+    }
+    .conditions-section {
+      background-color: white;
+      border-radius: 10px;
+      box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+      padding: 20px;
+    }
+    .section-title {
+      color: #2C5F2D;
+      border-bottom: 2px solid #7FAD73;
+      padding-bottom: 10px;
+      margin-top: 0;
+      margin-bottom: 15px;
+    }
+    .conditions-grid-inner {
+      display: grid;
+      grid-template-columns: 1fr 1fr 1fr;
+      gap: 15px;
+    }
+    .day-card {
+      background-color: #f9f9f9;
+      border-radius: 8px;
+      padding: 10px;
+      text-align: center;
+      transition: all 0.3s ease;
+    }
+    .day-card:hover {
+      background-color: #edf7e4;
+      box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+    }
+    .day-title {
+      font-weight: bold;
+      margin-bottom: 5px;
+      color: #2C5F2D;
+    }
+    .day-data {
+      font-size: 0.85em;
+      color: #666;
+      margin: 3px 0;
+    }
+    .explanation-section {
+      background-color: white;
+      border-radius: 10px;
+      box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+      padding: 20px;
+      margin-bottom: 20px;
+    }
+    .explanation-title {
+      color: #2C5F2D;
+      margin-top: 0;
+      cursor: pointer;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    .explanation-content {
+      text-align: left;
+      margin-top: 15px;
+    }
+    .rule-list {
+      padding-left: 20px;
+    }
+    .rule-list li {
+      margin-bottom: 10px;
+    }
+    .rule-title {
+      font-weight: bold;
+      color: #2C5F2D;
+    }
+    .rule-detail {
+      padding-left: 20px;
+      margin-top: 5px;
+    }
+    .rule-detail li {
+      margin-bottom: 5px;
+    }
+    .status-icon {
+      margin-right: 5px;
+      font-size: 1.2em;
+    }
+    .search-container {
+      display: flex;
+      margin: 15px auto;
+      max-width: 600px;
+      width: 90%;
+    }
+    .search-container input {
+      flex: 1;
+      padding: 10px;
+      border: 1px solid #7FAD73;
+      border-radius: 4px 0 0 4px;
+      font-size: 16px;
+    }
+    .search-container button {
+      padding: 10px 15px;
+      background-color: #7FAD73;
+      color: white;
+      border: none;
+      border-radius: 0 4px 4px 0;
+      cursor: pointer;
+      font-size: 16px;
+    }
+    .search-container button:hover {
+      background-color: #5d8d56;
+    }
+    .water-configuration {
+      background-color: white;
+      border-radius: 10px;
+      padding: 20px;
+      box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+      margin-bottom: 20px;
+    }
+    .config-form {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+      gap: 15px;
+      margin-bottom: 20px;
+    }
+    .form-group {
+      margin-bottom: 15px;
+    }
+    .form-group label {
+      display: block;
+      margin-bottom: 5px;
+      font-weight: 600;
+      color: #2C5F2D;
+    }
+    .form-group input,
+    .form-group select {
+      width: 100%;
+      padding: 12px 15px;
+      border: 1px solid #7FAD73;
+      border-radius: 4px;
+      font-size: 16px;
+      text-align: center;
+      margin: 5px 0;
+      box-sizing: border-box;
+      background-color: #f7fbf2;
+      transition: all 0.2s ease;
+    }
+    .form-group input:focus,
+    .form-group select:focus {
+      outline: none;
+      border-color: #5d8d56;
+      box-shadow: 0 0 0 3px rgba(127, 173, 115, 0.2);
+      background-color: white;
+    }
+    .form-group input::placeholder {
+      text-align: center;
+      color: #a0b894;
+    }
+    .water-status-card {
+      background-color: white;
+      border-radius: 10px;
+      box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+      padding: 20px;
+      margin-bottom: 20px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      flex-direction: column;
+      gap: 20px;
+    }
+    .water-status-top-row {
+      display: flex;
+      justify-content: space-between;
+      width: 100%;
+      border-bottom: 2px solid #7FAD73;
+      padding-bottom: 15px;
+    }
+    .water-status-bottom-row {
+      display: flex;
+      justify-content: space-between;
+      width: 100%;
+    }
+    .water-status-top-row .water-indicator {
+      flex: 1;
+      min-width: 0; 
+    }
+    .water-status-bottom-row .water-indicator {
+      flex: 1;
+      min-width: 0;
+      font-size: 0.9em;
+    }
+    .water-status-bottom-row .water-value {
+      font-size: 1.8rem; 
+    }
+    .water-indicator {
+      text-align: center;
+      flex: 1;
+    }
+    .water-value {
+      font-size: 2.5rem;
+      font-weight: bold;
+      margin: 10px 0;
+    }
+    .water-recommendation {
+      background-color: #edf7e4;
+      border-left: 4px solid #7FAD73;
+      padding: 15px;
+      border-radius: 0 8px 8px 0;
+      margin-top: 15px;
+    }
+    .chart-container {
+      display: flex;
+      flex-direction: column;
+      align-items: center; 
+      justify-content: center; 
+      background-color: white;
+      border-radius: 10px;
+      padding: 25px;
+      margin-bottom: 20px;
+      height: 350px;
+      box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+    }
+    .chart-container h4 {
+      width: 100%; 
+      text-align: center; 
+      margin-bottom: 15px;
+    }
+    .chart-container canvas {
+      max-width: 95%; 
+      max-height: 85%; 
+    }
+    .history-table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-top: 20px;
+      background-color: white;
+      border-radius: 8px;
+      overflow: hidden;
+      box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+    }
+    .history-table th {
+      background-color: #7FAD73;
+      color: white;
+      padding: 12px 15px;
+      text-align: left;
+      white-space: nowrap;
+    }
+    .history-table td {
+      text-align: left;
+      padding: 10px 15px;
+      white-space: nowrap;
+      border-bottom: 1px solid #eee;
+    }
+    .history-table tr:nth-child(even) {
+      background-color: #f9f9f9;
+    }
+    .irrigation-form {
+      display: flex;
+      gap: 15px;
+      margin-top: 20px;
+      align-items: flex-end;
+    }
+    .irrigation-input {
+      flex: 1;
+    }
+    .irrigation-input label {
+      display: block;
+      margin-bottom: 5px;
+      font-weight: 600;
+      color: #2C5F2D;
+    }
+    .irrigation-input input {
+      width: 100%;
+      padding: 10px;
+      border: 1px solid #7FAD73;
+      border-radius: 4px;
+      font-size: 16px;
+    }
+    .irrigation-result {
+      margin-top: 10px;
+      font-weight: bold;
+    }
+    .water-alert {
+      padding: 15px;
+      border-radius: 8px;
+      margin-bottom: 20px;
+      text-align: center;
+      font-weight: bold;
+    }   
+    .alert-good {
+      background-color: #e8f5e9;
+      color: #2E7D32;
+      border: 1px solid #a5d6a7;
+    }    
+    .alert-warning {
+      background-color: #fff8e1;
+      color: #FF9800;
+      border: 1px solid #ffd54f;
+    }    
+    .alert-danger {
+      background-color: #ffebee;
+      color: #C62828;
+      border: 1px solid #ef9a9a;
+    } 
+    .button-reset {
+      margin: 10px;
+      background-color: #e57373;
+      color: white;
+      border: none;
+      padding: 10px 20px;
+      border-radius: 5px;
+      cursor: pointer;
+      font-size: 16px;
+      transition: background-color 0.3s;
+    }
+    .button-red:hover {
+      background-color: #d9534f;
+    } 
+  </style>
+</head>
+<body>
+  <!-- Pantalla 1: Selección de ubicación -->
+  <div id="pantalla1">
+    <div class="main-content">
+      <div class="header">
+        <h1>AgroGuardian</h1>
+        <p>Seleccione su ubicación en el mapa</p>
+      </div>
+      <div class="search-container">
+        <input type="text" id="searchInput" placeholder="Buscar ubicación...">
+        <button onclick="buscarUbicacion()">Buscar</button>
+      </div>
+      <div class="map-container">
+        <div id="map"></div>
+        <div class="location-marker" id="locationInfo">Sin ubicación seleccionada</div>
+      </div>
+      <button class="save-button" onclick="guardarUbicacion()">Guardar ubicación</button>
+    </div>
+  </div>
+
+  <!-- Pantalla 2: Menú principal -->
+  <div id="pantalla2" class="hidden">
+    <div class="navbar">
+      <button onclick="mostrarPantalla(3)">Datos del prototipo</button>
+      <button onclick="mostrarPantalla(4)">Datos oficiales</button>
+      <button disabled>Análisis de cultivos</button>
+      <button onclick="mostrarPantalla(6)">Recomendaciones</button>
+      <button onclick="mostrarPantalla(7)">Balance hídrico</button>
+    </div>
+    <div class="main-content">
+      <div class="header">
+        <h1>AgroGuardian</h1>
+        <p>La inteligencia que protege tu campo, anticipándose a los desafíos del mañana</p>
+      </div>
+      <button class="button-red" onclick="resetUbicacion()">Cambiar ubicación</button>
+    </div>
+  </div>
+
+  <!-- Pantalla 3: Datos de Firebase -->
+  <div id="pantalla3" class="hidden">
+    <div class="navbar">
+      <button onclick="mostrarPantalla(3)">Datos del prototipo</button>
+      <button onclick="mostrarPantalla(4)">Datos oficiales</button>
+      <button disabled>Análisis de cultivos</button>
+      <button onclick="mostrarPantalla(6)">Recomendaciones</button>
+      <button onclick="mostrarPantalla(7)">Balance hídrico</button>
+    </div>
+    <button class="back-button" onclick="mostrarPantalla(2)">Volver</button>
+    <div class="main-content">
+      <h2 class="page-title">Datos del prototipo</h2>
+      <div class="data-container">
+        <div id="datosFirebase" class="loading">Cargando datos del prototipo...</div>
+        <div class="ultima-actualizacion">Última actualización: <span id="timestamp-actualizacion-3">--:--:--</span></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Pantalla 4: Datos de API del clima -->
+  <div id="pantalla4" class="hidden">
+    <div class="navbar">
+      <button onclick="mostrarPantalla(3)">Datos del prototipo</button>
+      <button onclick="mostrarPantalla(4)">Datos oficiales</button>
+      <button disabled>Análisis de cultivos</button>
+      <button onclick="mostrarPantalla(6)">Recomendaciones</button>
+      <button onclick="mostrarPantalla(7)">Balance hídrico</button>
+    </div>
+    <button class="back-button" onclick="mostrarPantalla(2)">Volver</button>
+    <div class="main-content">
+      <h2 class="page-title">Datos oficiales</h2>
+      <div class="data-container">
+        <div id="datosAPI" class="loading">Cargando datos meteorológicos...</div>
+        <div class="ultima-actualizacion">Última actualización: <span id="timestamp-actualizacion-4">--:--:--</span></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Pantalla 6: Recomendaciones -->
+  <div id="pantalla6" class="hidden">
+    <div class="navbar">
+      <button onclick="mostrarPantalla(3)">Datos del prototipo</button>
+      <button onclick="mostrarPantalla(4)">Datos oficiales</button>
+      <button disabled>Análisis de cultivos</button>
+      <button onclick="mostrarPantalla(6)">Recomendaciones</button>
+      <button onclick="mostrarPantalla(7)">Balance hídrico</button>
+    </div>
+    <button class="back-button" onclick="mostrarPantalla(2)">Volver</button>
+    <div class="main-content">
+      <h2 class="page-title">Recomendaciones</h2>
+      <p>Sugerencias basadas en datos del ambiente y pronóstico climático</p> 
+
+      <!-- Sección 1: Tarjetas de Recomendaciones -->
+      <div class="recommendation-grid" id="recomendacionesContainer">
+        <div class="recommendation-card">
+          <div class="card-header">Hoy</div>
+          <div class="card-body">
+            <div class="loading">Cargando recomendaciones...</div>
+          </div>
+        </div>
+        <div class="recommendation-card">
+          <div class="card-header">Mañana</div>
+          <div class="card-body">
+            <div class="loading">Cargando recomendaciones...</div>
+          </div>
+        </div>
+        <div class="recommendation-card">
+          <div class="card-header">Pasado Mañana</div>
+          <div class="card-body">
+            <div class="loading">Cargando recomendaciones...</div>
+          </div>
+        </div>
+      </div>
+      
+      <!-- Sección 2: Resumen de Condiciones -->
+      <div class="conditions-grid">
+        <div class="conditions-section">
+          <h3 class="section-title">Datos del Prototipo</h3>
+          <div id="prototipoData" class="loading">Cargando datos del prototipo...</div>
+        </div>
+        
+        <div class="conditions-section">
+          <h3 class="section-title">Pronóstico Meteorológico</h3>
+          <div class="conditions-grid-inner" id="pronosticoData">
+            <div class="loading">Cargando pronóstico...</div>
+          </div>
+        </div>
+      </div>
+      
+      <!-- Sección 3: Explicación de Reglas -->
+      <div class="explanation-section">
+        <h3 class="explanation-title" onclick="toggleExplanation()">
+          ¿Cómo se generan estas recomendaciones?
+          <span>▼</span>
+        </h3>
+        <div class="explanation-content" id="explanationContent" style="display: none;">
+          <p>Nuestro sistema combina datos en tiempo real de sensores ambientales con pronósticos meteorológicos para generar sugerencias personalizadas:</p>
+          
+          <ul class="rule-list">
+            <li>
+              <div class="rule-title">Riego:</div>
+              <div class="rule-detail">
+                <ul>
+                  <li><span class="status-icon">✅</span> Si humedad &lt; 30% y probabilidad de lluvia &lt; 30%</li>
+                  <li><span class="status-icon">⚠️</span> Si humedad 30-40% y probabilidad de lluvia &lt; 50%</li>
+                  <li><span class="status-icon">❌</span> Si hay alto porcentaje de humedad ó alta probabilidad de lluvia</li>
+                </ul>
+              </div>
+            </li>
+            
+            <li>
+              <div class="rule-title">Fumigación:</div>
+              <div class="rule-detail">
+                <ul>
+                  <li><span class="status-icon">✅</span> Viento &lt; 10 km/h y probabilidad de lluvia &lt; 20%</li>
+                  <li><span class="status-icon">⚠️</span> Viento 10-20 km/h y probabilidad de lluvia &lt; 40%</li>
+                  <li><span class="status-icon">❌</span> Viento &gt; 20 km/h o probabilidad de lluvia &gt; 40%</li>
+                </ul>
+              </div>
+            </li>
+            
+            <li>
+              <div class="rule-title">Trabajo al aire libre:</div>
+              <div class="rule-detail">
+                <ul>
+                  <li><span class="status-icon">✅</span> UV &lt; 5, temperatura máxima &lt; 32°C y probabilidad de lluvia &lt; 30%</li>
+                  <li><span class="status-icon">⚠️</span> UV 5-8, temperatura máxima &lt; 35°C y probabilidad de lluvia &lt; 60%</li>
+                  <li><span class="status-icon">❌</span> UV &gt; 8, temperatura máxima &gt; 35°C o probabilidad de lluvia &gt; 60%</li>
+                </ul>
+              </div>
+            </li>
+            
+            <li>
+              <div class="rule-title">Cosecha:</div>
+              <div class="rule-detail">
+                <ul>
+                  <li><span class="status-icon">✅</span> Probabilidad de lluvia &lt; 20% y humedad ambiente &lt; 70%</li>
+                  <li><span class="status-icon">⚠️</span> Probabilidad de lluvia 20-50% y humedad ambiente 70-80%</li>
+                  <li><span class="status-icon">❌</span> Probabilidad de lluvia &gt; 50% o humedad ambiente &gt; 80%</li>
+                </ul>
+              </div>
+            </li>
+          </ul>
+        </div>
+      </div>
+      
+      <div class="ultima-actualizacion">Última actualización: <span id="timestamp-actualizacion-6">--:--:--</span></div>
+    </div>
+  </div>
+
+  <!-- Pantalla 7: Balance hídrico -->
+  <div id="pantalla7" class="hidden">
+    <div class="navbar">
+      <button onclick="mostrarPantalla(3)">Datos del prototipo</button>
+      <button onclick="mostrarPantalla(4)">Datos oficiales</button>
+      <button disabled>Análisis de cultivos</button>
+      <button onclick="mostrarPantalla(6)">Recomendaciones</button>
+      <button onclick="mostrarPantalla(7)">Balance hídrico</button>
+    </div>
+    <button class="back-button" onclick="mostrarPantalla(2)">Volver</button>
+    <button class="back-button" onclick="mostrarFormularioConfig()">Editar Configuración</button>
+    
+    <div class="main-content">
+      <h2 class="page-title">Balance hídrico</h2> 
+      <!-- Configuración del lote -->
+      <div id="water-config-section" class="water-configuration hidden">
+        <h3>Configuración del lote</h3>
+        <div class="config-form">
+          <div class="form-group">
+            <label for="lote-nombre">Nombre del lote</label>
+            <input type="text" id="lote-nombre" placeholder="Ej: Lote Norte">
+          </div>
+          
+          <div class="form-group">
+            <label for="lote-superficie">Superficie (hectáreas)</label>
+            <input type="number" id="lote-superficie" min="0" step="0.1" placeholder="Ej: 5.2">
+          </div>
+          
+          <div class="form-group">
+            <label for="fecha-siembra">Fecha de siembra</label>
+            <input type="date" id="fecha-siembra">
+          </div>
+          
+          <div class="form-group">
+            <label for="tipo-suelo">Tipo de suelo</label>
+            <select id="tipo-suelo">
+              <option value="arenoso">Arenoso</option>
+              <option value="franco" selected>Franco</option>
+              <option value="arcilloso">Arcilloso</option>
+            </select>
+          </div>
+          
+          <div class="form-group">
+            <label for="theta-fc">Capacidad de Campo (θFC) - mm/cm</label>
+            <input type="number" id="theta-fc" step="0.1" min="0" value="1.8">
+          </div>
+
+          <div class="form-group">
+            <label for="theta-wp">Punto de Marchitez (θWP) - mm/cm</label>
+            <input type="number" id="theta-wp" step="0.1" min="0" value="0.8">
+          </div>
+
+          <div class="form-group">
+            <label for="profundidad-raiz">Profundidad de raíz (cm)</label>
+            <input type="number" id="profundidad-raiz" min="0" value="100">
+          </div>
+          
+          <div class="form-group">
+            <label for="sistema-riego">Sistema de riego</label>
+            <select id="sistema-riego">
+              <option value="aspersion">Aspersión</option>
+              <option value="pivote">Pivote</option>
+              <option value="goteo">Goteo</option>
+              <option value="surco">Surco</option>
+            </select>
+          </div>
+          
+          <div class="form-group">
+            <label for="caudal-riego">Caudal (litros/hora)</label>
+            <input type="number" id="caudal-riego" min="0" value="500">
+          </div>
+          
+          <div class="form-group">
+            <label for="umbral-alerta">Umbral de alerta (%)</label>
+            <input type="number" id="umbral-alerta" min="0" max="100" value="50">
+          </div>
+
+          <div class="form-group">
+            <label for="p-value">Fracción de Agotamiento (p)</label>
+            <input type="number" id="p-value" step="0.01" min="0" max="1" value="0.45">
+          </div>
+
+          <div class="form-group">
+            <label for="etapa-fenologica">Etapa fenológica</label>
+            <select id="etapa-fenologica">
+              <option value="inicial">Inicial (0-20 días)</option>
+              <option value="desarrollo" selected>Desarrollo (20-50 días)</option>
+              <option value="floracion">Floración (50-65 días)</option>
+              <option value="madurez">Madurez (65-90 días)</option>
+              <option value="cosecha">Cosecha (>90 días)</option>
+            </select>
+          </div>
+        </div>
+        <div style="display: flex; gap: 10px;">
+          <button class="save-button" onclick="guardarConfiguracionLote()">Guardar configuración</button>
+          <button class="back-button" onclick="ocultarFormularioConfig()">Cancelar</button>
+          <button class="button-reset" onclick="resetearLote()">Resetear lote</button>
+        </div>
+      </div>
+      
+      <!-- Estado actual del agua -->
+      <div id="water-status-section">
+        <div class="water-alert" id="water-alert">
+          <span class="water-drop">💧</span> <span id="water-alert-text">Calculando estado del lote...</span>
+        </div>
+        
+        <div class="water-status-card">
+          <div class="water-status-top-row">
+            <div class="water-indicator">
+              <div>Agua disponible</div>
+              <div class="water-value" id="agua-disponible-mm">0 mm</div>
+              <div id="agua-disponible-porc">0%</div>
+            </div>
+            
+            <div class="water-indicator">
+              <div>Reserva de agua</div>
+              <div class="water-value" id="reserva-agua">0%</div>
+              <div>Capacidad total: <span id="capacidad-total">0 mm</span></div>
+            </div>
+            
+            <div class="water-indicator">
+              <div>Días sin regar</div>
+              <div class="water-value" id="dias-sin-regar">0</div>
+              <div>Próximo riego en: <span id="dias-proximo-riego">0 días</span></div>
+            </div>
+          </div>
+
+          <div class="water-status-bottom-row">
+            <div class="water-indicator">
+              <div>TAW</div>
+              <div class="water-value" id="taw-display">0 mm</div>
+            </div>
+            
+            <div class="water-indicator">
+              <div>RAW</div>
+              <div class="water-value" id="raw-display">0 mm</div>
+            </div>
+
+            <div class="water-indicator">
+              <div>AD</div>
+              <div class="water-value" id="ad-display">0 mm</div>
+            </div>
+
+            <div class="water-indicator">
+              <div>ETr</div>
+              <div class="water-value" id="etr-display">0 mm</div>
+            </div>
+          </div>
+        </div>
+        <div class="water-configuration" style="margin-top: 20px;">
+          <h3>Recomendación de riego</h3>
+          <p id="recomendacion-riego">Calculando recomendación...</p>
+          <div class="irrigation-result" id="volumen-riego">Volumen necesario: 0 m³</div>
+        </div>
+        
+        <!-- Gráficos -->
+        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(550px, 1fr)); gap: 20px; margin-bottom: 20px;">
+          <div class="chart-container">
+            <h4>Agua en el suelo (últimos 30 días)</h4>
+            <canvas id="water-level-chart"></canvas>
+          </div>
+          
+          <div class="chart-container">
+            <h4>Entradas y salidas de agua</h4>
+            <canvas id="water-flow-chart"></canvas>
+          </div>
+        </div>
+
+        <!-- Registro de riego -->
+        <div class="balance-section" style="margin-top: 30px;">
+          <h3>Registrar riego</h3>
+          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 30px;">
+            <!-- Columna izquierda: Campos de entrada -->
+            <div>
+              <div class="irrigation-input" style="margin-bottom: 15px;">
+                <label for="riego-mm">Riego aplicado (mm)</label>
+                <input type="number" id="riego-mm" min="0" step="1" value="20">
+              </div>
+              
+              <div class="irrigation-input">
+                <label for="riego-min">Tiempo de riego (minutos)</label>
+                <input type="number" id="riego-min" min="0" step="1" value="60">
+              </div>
+            </div>
+            
+            <!-- Columna derecha: Botón y resultado -->
+            <div style="display: flex; flex-direction: column; align-items: center; justify-content: center;">
+              <button class="save-button" onclick="registrarRiego()" style="margin-bottom: 15px; width: 100%; max-width: 200px;">
+                Registrar riego
+              </button>
+              
+              <div class="irrigation-result" id="riego-calculado" style="width: 100%; text-align: center;">
+                Equivalente a: 0 mm | Volumen aplicado: 0 m³
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="balance-section" style="margin-top: 45px;">
+        
+        <!-- Historial de balance hídrico -->
+        <div class="balance-section">
+          <h3>Historial diario</h3>
+          <div style="overflow-x: auto; width: 100%;">
+            <table class="history-table">
+              <thead>
+                <tr>
+                  <th>Fecha</th>
+                  <th>Lluvia</th>
+                  <th>ET₀</th>
+                  <th>ETc</th>
+                  <th>ETr</th>
+                  <th>Riego</th>
+                  <th>Agua</th>
+                  <th>AD</th>
+                  <th>Drenaje</th>
+                </tr>
+              </thead>
+              <tbody id="water-history-body">
+                <tr><td colspan="9">Cargando historial...</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+      
+      <div class="ultima-actualizacion">Última actualización: <span id="timestamp-actualizacion-7">--:--:--</span></div>
+    </div>
+  </div>
+
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script>
+    // Variables globales
+    let selectedCoords = null;
+    let marker = null;
+    const map = L.map('map').setView([-34.6, -58.4], 6);
+    let locationInfo = null;
+    let intervaloPantalla4 = null;
+    let firebaseListener = null;
+    let intervaloPantalla6 = null;
+    let intervaloPantalla7 = null;
+    // Para el balance hidrico
+    let waterConfig = null;
+    let waterHistory = [];
+    let waterLevelChart = null;
+    let waterFlowChart = null;
+    let ubicacionGuardada = null;
+    const apiKey = 'de08c7db7e49ca1eeff97cd75131d494'; 
+
+    // Función para inicializar después de que el DOM esté listo
+    function initApp() {
+      locationInfo = document.getElementById('locationInfo');
+      
+      // Inicializar mapa
+      L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        maxZoom: 19,
+        attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+      }).addTo(map);
+
+      // Evento click en el mapa
+      map.on('click', function(e) {
+        selectedCoords = e.latlng;
+        if (marker) {
+          marker.setLatLng(e.latlng);
+        } else {
+          marker = L.marker(e.latlng).addTo(map);
+        }
+        updateLocationInfo(selectedCoords);
+      });
+
+      // Cargar ubicación guardada si existe
+      const ubicacionGuardada = localStorage.getItem('ubicacion');
+      if (ubicacionGuardada) {
+        const coords = JSON.parse(ubicacionGuardada);
+        selectedCoords = coords;
+        marker = L.marker(coords).addTo(map);
+        map.setView(coords, 12);
+        updateLocationInfo(coords);
+        mostrarPantalla(2);
+      } else {
+        mostrarPantalla(1);
+      }
+
+      // Inicializar fecha de siembra
+      const fechaSiembra = document.getElementById('fecha-siembra');
+      if (fechaSiembra) {
+        fechaSiembra.value = new Date().toISOString().split('T')[0];
+      }
+    }
+
+    // Actualizar información de ubicación
+    function updateLocationInfo(coords) {
+      if (locationInfo && coords) {
+        locationInfo.textContent = `Ubicación: ${coords.lat.toFixed(4)}, ${coords.lng.toFixed(4)}`;
+      }
+    }
+
+    // Función para guardar ubicación
+    function guardarUbicacion() {
+      if (selectedCoords) {
+        localStorage.setItem('ubicacion', JSON.stringify({
+          lat: selectedCoords.lat,
+          lng: selectedCoords.lng
+        }));
+        mostrarPantalla(2);
+      } else {
+        alert('Seleccione una ubicación en el mapa');
+      }
+    }
+
+    // Función para resetear ubicación
+    function resetUbicacion() {
+      // Limpiar intervalos
+      clearInterval(intervaloPantalla4);
+      intervaloPantalla4 = null;
+      clearInterval(intervaloPantalla6);
+      intervaloPantalla6 = null;
+      clearInterval(intervaloPantalla7);
+      intervaloPantalla7 = null;
+      
+      // Limpiar listener de Firebase
+      if (firebaseListener) {
+        db.ref('lecturas').off('child_added', firebaseListener);
+        firebaseListener = null;
+      }
+      
+      localStorage.removeItem('ubicacion');
+      mostrarPantalla(1);
+    }
+
+    // Función para mostrar la última actualización
+    function actualizarTimestamp() {
+      const ahora = new Date();
+      const hora = ahora.getHours().toString().padStart(2, '0');
+      const minutos = ahora.getMinutes().toString().padStart(2, '0');
+      const segundos = ahora.getSeconds().toString().padStart(2, '0');
+      const tiempo = `${hora}:${minutos}:${segundos}`;
+      
+      // Actualizar todos los contadores
+      const timestamp3 = document.getElementById('timestamp-actualizacion-3');
+      const timestamp4 = document.getElementById('timestamp-actualizacion-4');
+      const timestamp6 = document.getElementById('timestamp-actualizacion-6');
+      const timestamp7 = document.getElementById('timestamp-actualizacion-7');
+
+      if (timestamp3) timestamp3.textContent = tiempo;
+      if (timestamp4) timestamp4.textContent = tiempo;
+      if (timestamp6) timestamp6.textContent = tiempo;
+      if (timestamp7) timestamp7.textContent = tiempo;
+    }
+
+    // Función para mostrar pantallas
+    function mostrarPantalla(num) {
+      // Limpiar recursos anteriores
+      clearInterval(intervaloPantalla4);
+      intervaloPantalla4 = null;
+      clearInterval(intervaloPantalla6);
+      intervaloPantalla6 = null;
+      clearInterval(intervaloPantalla7);
+      intervaloPantalla7 = null;
+      
+      if (firebaseListener) {
+        db.ref('lecturas').off('child_added', firebaseListener);
+        firebaseListener = null;
+      }
+
+      // Ocultar todas las pantallas
+      for (let i = 1; i <= 7; i++) {
+        const pantalla = document.getElementById('pantalla' + i);
+        if (pantalla) pantalla.classList.add('hidden');
+      }
+      
+      // Mostrar pantalla seleccionada
+      const pantallaActual = document.getElementById('pantalla' + num);
+      if (pantallaActual) {
+        pantallaActual.classList.remove('hidden');
+      }
+      
+      // Configurar según la pantalla
+      if (num === 3) {
+        cargarDatosFirebase(); // Escucha en tiempo real
+      } else if (num === 4) {
+        cargarDatosAPI(); // Carga inicial
+        intervaloPantalla4 = setInterval(cargarDatosAPI, 30000); // Actualización periódica
+      } else if (num === 6) {
+        cargarRecomendaciones(); // Carga inicial
+        intervaloPantalla6 = setInterval(cargarRecomendaciones, 30000); // Actualización periódica
+      } else if (num === 7) {
+        // Cargar ubicación guardada
+        const ubicacion = localStorage.getItem('ubicacion');
+        if (ubicacion) ubicacionGuardada = JSON.parse(ubicacion);
+        
+        cargarBalanceHidrico();
+        intervaloPantalla7 = setInterval(cargarBalanceHidrico, 60000); // Actualizar cada minuto
+      }
+    }
+    
+    // Función para mostrar/ocultar explicación
+    function toggleExplanation() {
+      const content = document.getElementById('explanationContent');
+      const icon = document.querySelector('.explanation-title span');
+      
+      if (content) {
+        if (content.style.display === 'none') {
+          content.style.display = 'block';
+          icon.textContent = '▲';
+        } else {
+          content.style.display = 'none';
+          icon.textContent = '▼';
+        }
+      }
+    }
+
+    // Configuración de Firebase
+    const firebaseConfig = {
+      apiKey: "AIzaSyCLm7tOsOVyWagItSNXzqew4sCaYlktYxI",
+      authDomain: "agroguardian-d5d4d.firebaseapp.com",
+      databaseURL: "https://agroguardian-d5d4d-default-rtdb.firebaseio.com",
+      projectId: "agroguardian-d5d4d",
+      storageBucket: "agroguardian-d5d4d.firebasestorage.app",
+      messagingSenderId: "16391188051",
+      appId: "1:16391188051:web:ab88998d0f67a94970e0a6",
+      measurementId: "G-VGG7M52RME"
+    };
+
+    // Inicializar Firebase
+    firebase.initializeApp(firebaseConfig);
+    const db = firebase.database();
+
+    // Cargar datos Firebase en tiempo real
+    function cargarDatosFirebase() {
+      try {
+        console.log("Iniciando escucha de datos en tiempo real...");
+        const container = document.getElementById('datosFirebase');
+        if (!container) return;
+        
+        container.classList.add('updating');
+        
+        // Referencia al nodo 'lecturas'
+        const ref = db.ref('lecturas');
+        
+        // Limpiar listener anterior si existe
+        if (firebaseListener) {
+          ref.off('child_added', firebaseListener);
+        }
+        
+        // Configurar listener para nuevos registros
+        firebaseListener = ref.orderByKey().limitToLast(1).on('child_added', (snapshot) => {
+          const registroCompleto = snapshot.val();
+          console.log("Nuevo registro recibido:", registroCompleto);
+
+          if (!registroCompleto) {
+            container.innerHTML = '<p>No se encontraron datos recientes.</p>';
+            return;
+          }
+
+          const datos = registroCompleto.datos;
+          const timestamp = registroCompleto.timestamp;
+
+          if (!datos) {
+            container.innerHTML = '<p>Formato de datos inesperado.</p>';
+            return;
+          }
+
+          container.innerHTML = '';
+          
+          // Propiedades a mostrar
+          const propiedades = [
+            { 
+              key: 'calidad', 
+              label: 'Calidad del aire',
+              formatter: v => `<span class="${v === 'Buena' ? 'good' : 'bad'}">${v}</span>` 
+            },
+            { 
+              key: 'co2', 
+              label: 'CO₂',
+              formatter: v => `${parseFloat(v).toFixed(2)} ppm`
+            },
+            { 
+              key: 'humedad', 
+              label: 'Humedad',
+              formatter: v => `${parseFloat(v).toFixed(2)} %`
+            },
+            { 
+              key: 'luz', 
+              label: 'Luz',
+              formatter: v => `${parseFloat(v).toFixed(2)} lux`
+            },
+            { 
+              key: 'temperatura', 
+              label: 'Temperatura',
+              formatter: v => `${parseFloat(v).toFixed(2)} °C`
+            },
+            { 
+              key: 'uv', 
+              label: 'Índice UV',
+              formatter: v => parseFloat(v).toFixed(1) // Mostrar solo un decimal para índice UV
+            },
+            { 
+              key: 'timestamp', 
+              label: 'Fecha y hora', 
+              formatter: v => v
+            }
+          ];
+
+          // Mostrar cada propiedad
+          propiedades.forEach(prop => {
+            const valor = prop.key === 'timestamp' ? timestamp : datos[prop.key];
+            
+            if (valor !== undefined && valor !== null) {
+              const div = document.createElement('div');
+              div.className = 'data-item';
+              
+              const valorFormateado = prop.formatter ? prop.formatter(valor) : valor;
+              
+              div.innerHTML = `<span>${prop.label}</span><span>${valorFormateado}</span>`;
+              container.appendChild(div);
+            }
+          });
+          
+          actualizarTimestamp();
+          container.classList.remove('updating');
+        }, (error) => {
+          console.error("Error en Firebase:", error);
+          container.innerHTML = '<p class="error">Error al cargar datos. Por favor intente nuevamente.</p>';
+          container.classList.remove('updating');
+        });
+        
+      } catch (error) {
+        console.error("Error grave en Firebase:", error);
+        const container = document.getElementById('datosFirebase');
+        if (container) {
+          container.innerHTML = '<p class="error">Error crítico. Por favor recargue la página.</p>';
+        }
+      }
+    }
+
+    // Cargar datos de la API del clima (actualización periódica)
+    async function cargarDatosAPI() {
+      try {
+        console.log("Actualizando datos oficiales...");
+        const container = document.getElementById('datosAPI');
+        if (!container) return;
+        
+        container.classList.add('updating');
+        
+        const ubicacionGuardada = localStorage.getItem('ubicacion');
+        const latlng = ubicacionGuardada ? JSON.parse(ubicacionGuardada) : { lat: -34.6, lng: -58.4 };
+        
+        const apiKey = 'de08c7db7e49ca1eeff97cd75131d494';
+        const urlClima = `https://api.openweathermap.org/data/2.5/weather?lat=${latlng.lat}&lon=${latlng.lng}&units=metric&lang=es&appid=${apiKey}`;
+        const urlUV = `https://api.openweathermap.org/data/2.5/uvi?lat=${latlng.lat}&lon=${latlng.lng}&appid=${apiKey}`;
+
+        // Realizar ambas peticiones simultáneamente
+        const [responseClima, responseUV] = await Promise.all([
+          fetch(urlClima),
+          fetch(urlUV)
+        ]);
+        
+        // Verificar respuestas
+        if (!responseClima.ok) throw new Error('Error en API del clima');
+        if (!responseUV.ok) throw new Error('Error en API UV');
+        
+        const dataClima = await responseClima.json();
+        const dataUV = await responseUV.json();
+        
+        // Convertir velocidad del viento a km/h (1 m/s = 3.6 km/h)
+        const velocidadViento = dataClima.wind.speed * 3.6;
+        const indiceUV = dataUV.value; // Ya es índice UV
+        
+        const datosClima = {
+          'Temperatura': `${dataClima.main.temp} °C`,
+          'Sensación térmica': `${dataClima.main.feels_like} °C`,
+          'Humedad': `${dataClima.main.humidity} %`,
+          'Presión': `${dataClima.main.pressure} hPa`,
+          'Estado del clima': dataClima.weather[0].description,
+          'Velocidad del viento': `${velocidadViento.toFixed(1)} km/h`,
+          'Dirección del viento': `${dataClima.wind.deg}°`,
+          'Nubosidad': `${dataClima.clouds.all} %`,
+          'Salida del sol': new Date(dataClima.sys.sunrise * 1000).toLocaleTimeString(),
+          'Puesta del sol': new Date(dataClima.sys.sunset * 1000).toLocaleTimeString(),
+          'Índice UV': indiceUV.toFixed(1)
+        };
+
+        container.innerHTML = '';
+        for (const [key, value] of Object.entries(datosClima)) {
+          const div = document.createElement('div');
+          div.className = 'data-item';
+          div.innerHTML = `<span>${key}</span><span>${value}</span>`;
+          container.appendChild(div);
+        }
+        
+        actualizarTimestamp();
+        container.classList.remove('updating');
+        
+      } catch (error) {
+        console.error('Error al cargar datos del clima:', error);
+        const container = document.getElementById('datosAPI');
+        if (container) {
+          container.innerHTML = '<p class="error">Error al obtener datos meteorológicos. Intente más tarde.</p>';
+        }
+      }
+    }
+    
+    // Cargar datos para recomendaciones
+    async function cargarRecomendaciones() {
+      try {
+        console.log("Actualizando recomendaciones...");
+        const container = document.getElementById('recomendacionesContainer');
+        const prototipoContainer = document.getElementById('prototipoData');
+        const pronosticoContainer = document.getElementById('pronosticoData');
+        
+        // Verificar que los elementos existen
+        if (!container || !prototipoContainer || !pronosticoContainer) {
+          console.error('Elementos del DOM no encontrados. ¿Pantalla activa?');
+          return;
+        }
+        
+        container.classList.add('updating');
+        prototipoContainer.classList.add('updating');
+        pronosticoContainer.classList.add('updating');
+        
+        // Obtener datos del prototipo (Firebase)
+        const datosPrototipo = await obtenerDatosFirebase();
+        if (prototipoContainer) {
+          prototipoContainer.innerHTML = datosPrototipo ? generarHTMLDatosPrototipo(datosPrototipo) : 
+            '<p class="error">No se encontraron datos del prototipo</p>';
+        }
+        
+        // Obtener pronóstico meteorológico
+        const pronostico = await obtenerPronostico5Dias();
+        if (pronosticoContainer) {
+          pronosticoContainer.innerHTML = pronostico ? generarHTMLPronostico(pronostico) : 
+            '<p class="error">No se encontró pronóstico</p>';
+        }
+        
+        // Generar recomendaciones
+        const recomendaciones = generarRecomendaciones(datosPrototipo, pronostico);
+        
+        // Renderizar recomendaciones
+        const dias = ['hoy', 'manana', 'pasado'];
+        dias.forEach((dia, index) => {
+          const tarjeta = container.children[index];
+          if (!tarjeta) return;
+
+          const card = tarjeta.querySelector('.card-body');
+          if (!card) return;
+
+          const recomendacionesDia = recomendaciones[dia];
+          if (!recomendacionesDia) {
+            console.warn(`No hay recomendaciones para ${dia}`);
+            card.innerHTML = '<p class="error">Recomendaciones no disponibles para este día.</p>';
+            return;
+          }
+
+          card.innerHTML = generarHTMLRecomendaciones(recomendacionesDia);
+        });
+
+        actualizarTimestamp();
+        container.classList.remove('updating');
+        prototipoContainer.classList.remove('updating');
+        pronosticoContainer.classList.remove('updating');
+        
+      } catch (error) {
+        console.error('Error al cargar recomendaciones:', error);
+        const container = document.getElementById('recomendacionesContainer');
+        if (container) {
+          container.innerHTML = '<p class="error">Error al generar recomendaciones. Intente más tarde.</p>';
+        }
+      }
+    }
+    
+    // Obtener datos de Firebase para recomendaciones
+    async function obtenerDatosFirebase() {
+      try {
+        // Referencia al último registro
+        const snapshot = await db.ref('lecturas').orderByKey().limitToLast(1).once('value');
+        
+        if (!snapshot.exists()) {
+          return null;
+        }
+        
+        const registro = snapshot.val();
+        const key = Object.keys(registro)[0];
+        return registro[key].datos;
+        
+      } catch (error) {
+        console.error("Error obteniendo datos de Firebase:", error);
+        return null;
+      }
+    }
+    
+    // Obtener pronóstico de 5 días
+    async function obtenerPronostico5Dias() {
+      try {
+        const ubicacionGuardada = localStorage.getItem('ubicacion');
+        const latlng = ubicacionGuardada ? JSON.parse(ubicacionGuardada) : { lat: -34.6, lng: -58.4 };
+        const apiKey = 'de08c7db7e49ca1eeff97cd75131d494';
+        
+        const url = `https://api.openweathermap.org/data/2.5/forecast?lat=${latlng.lat}&lon=${latlng.lng}&units=metric&lang=es&appid=${apiKey}`;
+        const response = await fetch(url);
+        
+        if (!response.ok) throw new Error('Error en API de pronóstico');
+        
+        const data = await response.json();
+        
+        // Agrupar por día
+        const pronosticoPorDia = {};
+        const hoy = new Date();
+        const manana = new Date();
+        manana.setDate(manana.getDate() + 1);
+        const pasado = new Date();
+        pasado.setDate(pasado.getDate() + 2);
+        
+        const dias = {
+          hoy: hoy.toISOString().split('T')[0],
+          manana: manana.toISOString().split('T')[0],
+          pasado: pasado.toISOString().split('T')[0]
+        };
+        
+        data.list.forEach(item => {
+          const fecha = item.dt_txt.split(' ')[0];
+          
+          // Solo consideramos los próximos 3 días
+          if (fecha === dias.hoy || fecha === dias.manana || fecha === dias.pasado) {
+            if (!pronosticoPorDia[fecha]) {
+              pronosticoPorDia[fecha] = {
+                temps: [],
+                humedades: [],
+                vientos: [],
+                lluvias: [],
+                descripciones: []
+              };
+            }
+            
+            pronosticoPorDia[fecha].temps.push(item.main.temp);
+            pronosticoPorDia[fecha].humedades.push(item.main.humidity);
+            pronosticoPorDia[fecha].vientos.push(item.wind.speed);
+            pronosticoPorDia[fecha].lluvias.push(item.rain ? item.rain['3h'] || 0 : 0);
+            pronosticoPorDia[fecha].descripciones.push(item.weather[0].description);
+          }
+        });
+        
+        // Calcular promedios por día
+        const resumen = {};
+        for (const [fecha, datos] of Object.entries(pronosticoPorDia)) {
+          const tempMax = Math.max(...datos.temps);
+          const tempMin = Math.min(...datos.temps);
+          const humedad = datos.humedades.reduce((a, b) => a + b, 0) / datos.humedades.length;
+          // Convertir velocidad del viento a km/h (1 m/s = 3.6 km/h)
+          const viento = (datos.vientos.reduce((a, b) => a + b, 0) / datos.vientos.length) * 3.6;
+          const lluvia = Math.max(...datos.lluvias);
+          const descripcion = datos.descripciones[0]; // Tomamos la primera descripción
+          
+          if (fecha === dias.hoy) resumen.hoy = { tempMax, tempMin, humedad, viento, lluvia, descripcion };
+          if (fecha === dias.manana) resumen.manana = { tempMax, tempMin, humedad, viento, lluvia, descripcion };
+          if (fecha === dias.pasado) resumen.pasado = { tempMax, tempMin, humedad, viento, lluvia, descripcion };
+        }
+        
+        return resumen;
+        
+      } catch (error) {
+        console.error('Error obteniendo pronóstico:', error);
+        return null;
+      }
+    }
+    
+    // Generar HTML para datos del prototipo
+    function generarHTMLDatosPrototipo(datos) {
+      if (!datos) return '<p>No hay datos disponibles</p>';
+      
+      return `
+        <div class="data-item">
+          <span>Humedad:</span>
+          <span>${datos.humedad ? parseFloat(datos.humedad).toFixed(2) + '%' : 'N/A'}</span>
+        </div>
+        <div class="data-item">
+          <span>Temperatura:</span>
+          <span>${datos.temperatura ? parseFloat(datos.temperatura).toFixed(2) + '°C' : 'N/A'}</span>
+        </div>
+        <div class="data-item">
+          <span>Índice UV:</span>
+          <span>${datos.uv ? parseFloat(datos.uv).toFixed(1) : 'N/A'}</span>
+        </div>
+        <div class="data-item">
+          <span>Calidad del aire:</span>
+          <span class="${datos.calidad === 'Buena' ? 'good' : 'bad'}">
+            ${datos.calidad || 'N/A'}
+          </span>
+        </div>
+      `;
+    }
+    
+    // Generar HTML para pronóstico
+    function generarHTMLPronostico(pronostico) {
+      if (!pronostico) return '<p>No hay pronóstico disponible</p>';
+      
+      return `
+        <div class="day-card">
+          <div class="day-title">Hoy</div>
+          <div class="day-data">${pronostico.hoy ? pronostico.hoy.descripcion : 'N/A'}</div>
+          <div class="day-data">Max: ${pronostico.hoy ? pronostico.hoy.tempMax.toFixed(1) + '°C' : 'N/A'}</div>
+          <div class="day-data">Min: ${pronostico.hoy ? pronostico.hoy.tempMin.toFixed(1) + '°C' : 'N/A'}</div>
+          <div class="day-data">Lluvia: ${pronostico.hoy ? pronostico.hoy.lluvia.toFixed(1) + 'mm' : 'N/A'}</div>
+          <div class="day-data">Viento: ${pronostico.hoy ? pronostico.hoy.viento.toFixed(1) + ' km/h' : 'N/A'}</div>
+        </div>
+        <div class="day-card">
+          <div class="day-title">Mañana</div>
+          <div class="day-data">${pronostico.manana ? pronostico.manana.descripcion : 'N/A'}</div>
+          <div class="day-data">Max: ${pronostico.manana ? pronostico.manana.tempMax.toFixed(1) + '°C' : 'N/A'}</div>
+          <div class="day-data">Min: ${pronostico.manana ? pronostico.manana.tempMin.toFixed(1) + '°C' : 'N/A'}</div>
+          <div class="day-data">Lluvia: ${pronostico.manana ? pronostico.manana.lluvia.toFixed(1) + 'mm' : 'N/A'}</div>
+          <div class="day-data">Viento: ${pronostico.manana ? pronostico.manana.viento.toFixed(1) + ' km/h' : 'N/A'}</div>
+        </div>
+        <div class="day-card">
+          <div class="day-title">Pasado Mañana</div>
+          <div class="day-data">${pronostico.pasado ? pronostico.pasado.descripcion : 'N/A'}</div>
+          <div class="day-data">Max: ${pronostico.pasado ? pronostico.pasado.tempMax.toFixed(1) + '°C' : 'N/A'}</div>
+          <div class="day-data">Min: ${pronostico.pasado ? pronostico.pasado.tempMin.toFixed(1) + '°C' : 'N/A'}</div>
+          <div class="day-data">Lluvia: ${pronostico.pasado ? pronostico.pasado.lluvia.toFixed(1) + 'mm' : 'N/A'}</div>
+          <div class="day-data">Viento: ${pronostico.pasado ? pronostico.pasado.viento.toFixed(1) + ' km/h' : 'N/A'}</div>
+        </div>
+      `;
+    }
+    
+    // Generar recomendaciones basadas en datos
+    function generarRecomendaciones(datosPrototipo, pronostico) {
+      const recomendaciones = {
+        hoy: {},
+        manana: {},
+        pasado: {}
+      };
+      
+      const tareas = ['regar', 'fumigar', 'trabajar', 'cosechar'];
+      
+      // Si no hay datos, devolver recomendaciones vacías
+      if (!datosPrototipo || !pronostico) {
+        tareas.forEach(tarea => {
+          recomendaciones.hoy[tarea] = { status: '⚠️ Evaluar', reason: 'Datos insuficientes' };
+          recomendaciones.manana[tarea] = { status: '⚠️ Evaluar', reason: 'Datos insuficientes' };
+          recomendaciones.pasado[tarea] = { status: '⚠️ Evaluar', reason: 'Datos insuficientes' };
+        });
+        return recomendaciones;
+      }
+      
+      // Generar recomendaciones para cada día y cada tarea
+      for (const dia of ['hoy', 'manana', 'pasado']) {
+        const datosDia = {
+          lluvia: pronostico[dia]?.lluvia ?? 0,
+          viento: pronostico[dia]?.viento ?? 0, // Ya está en km/h
+          tempMax: pronostico[dia]?.tempMax ?? 0,
+          humedad: pronostico[dia]?.humedad ?? 0,
+        };
+
+        // Recomendación para regar
+        if (datosPrototipo.humedad < 30 && datosDia.lluvia < 30) {
+          recomendaciones[dia].regar = { status: '✅ Recomendado', reason: 'Humedad baja y no se esperan lluvias' };
+        } else if (datosPrototipo.humedad < 40 && datosDia.lluvia < 50) {
+          recomendaciones[dia].regar = { status: '⚠️ Evaluar', reason: 'Humedad moderada, considerar riego ligero' };
+        } else {
+          recomendaciones[dia].regar = { status: '❌ No recomendado', reason: 'Suficiente humedad o lluvia prevista' };
+        }
+        
+        // Recomendación para fumigar
+        if (datosDia.viento < 10 && datosDia.lluvia < 20) {
+          recomendaciones[dia].fumigar = { status: '✅ Recomendado', reason: 'Viento bajo y sin lluvia' };
+        } else if (datosDia.viento < 20 && datosDia.lluvia < 40) {
+          recomendaciones[dia].fumigar = { status: '⚠️ Evaluar', reason: 'Condiciones moderadas, considerar fumigación temprana' };
+        } else {
+          recomendaciones[dia].fumigar = { status: '❌ No recomendado', reason: 'Viento fuerte o alta probabilidad de lluvia' };
+        }
+        
+        // Recomendación para trabajar al aire libre
+        if (datosPrototipo.uv < 5 && datosDia.tempMax < 32 && datosDia.lluvia < 30) {
+          recomendaciones[dia].trabajar = { status: '✅ Recomendado', reason: 'Radiación UV baja y temperatura agradable' };
+        } else if (datosPrototipo.uv < 8 && datosDia.tempMax < 35 && datosDia.lluvia < 60) {
+          recomendaciones[dia].trabajar = { status: '⚠️ Evaluar', reason: 'Condiciones aceptables con precauciones' };
+        } else {
+          recomendaciones[dia].trabajar = { status: '❌ No recomendado', reason: 'Radiación UV alta, calor excesivo o lluvia' };
+        }
+        
+        // Recomendación para cosechar
+        if (datosDia.lluvia < 20 && datosDia.humedad < 70) {
+          recomendaciones[dia].cosechar = { status: '✅ Recomendado', reason: 'Día seco con humedad óptima para cosecha' };
+        } else if (datosDia.lluvia < 50 && datosDia.humedad < 80) {
+          recomendaciones[dia].cosechar = { status: '⚠️ Evaluar', reason: 'Condiciones moderadas, considerar cosecha parcial' };
+        } else {
+          recomendaciones[dia].cosechar = { status: '❌ No recomendado', reason: 'Alta humedad o probabilidad de lluvia' };
+        }
+      }
+      
+      return recomendaciones;
+    }
+    
+    // Generar HTML para recomendaciones
+    function generarHTMLRecomendaciones(recomendaciones) {
+      let html = '';
+      const tareas = ['regar', 'fumigar', 'trabajar', 'cosechar'];
+      
+      tareas.forEach(tarea => {
+        const rec = recomendaciones[tarea] || { status: '⚠️ Evaluar', reason: 'Datos insuficientes' };
+        const statusClass = rec.status.includes('✅') ? 'status-good' : 
+                           rec.status.includes('⚠️') ? 'status-warning' : 'status-bad';
+        
+        html += `
+          <div class="task-item">
+            <div class="task-header">
+              <div class="task-title">${tarea.charAt(0).toUpperCase() + tarea.slice(1)}</div>
+              <div class="task-status ${statusClass}">${rec.status}</div>
+            </div>
+            <div class="task-reason">${rec.reason}</div>
+          </div>
+        `;
+      });
+      
+      return html;
+    }
+
+    // Función para buscar ubicación usando Nominatim (OpenStreetMap)
+    async function buscarUbicacion() {
+      const input = document.getElementById('searchInput');
+      const query = input.value.trim();
+      
+      if (!query) {
+        alert('Por favor ingrese una ubicación');
+        return;
+      }
+      
+      try {
+        const url = `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(query)}`;
+        const response = await fetch(url);
+        const data = await response.json();
+        
+        if (data.length === 0) {
+          alert('Ubicación no encontrada');
+          return;
+        }
+        
+        // Tomamos el primer resultado
+        const resultado = data[0];
+        const lat = parseFloat(resultado.lat);
+        const lng = parseFloat(resultado.lon);
+        
+        // Actualizamos las coordenadas seleccionadas
+        selectedCoords = { lat, lng };
+        
+        // Movemos el mapa a la ubicación encontrada
+        map.setView([lat, lng], 14);
+        
+        // Actualizamos el marcador
+        if (marker) {
+          marker.setLatLng([lat, lng]);
+        } else {
+          marker = L.marker([lat, lng]).addTo(map);
+        }
+        
+        // Actualizamos la información de ubicación
+        updateLocationInfo(selectedCoords);
+        
+      } catch (error) {
+        console.error('Error en la búsqueda:', error);
+        alert('Error al buscar la ubicación. Intente nuevamente.');
+      }
+    }
+
+    // Inicializar aplicación cuando el DOM esté listo
+    document.addEventListener('DOMContentLoaded', initApp);
+
+    // Mostrar/ocultar formulario de configuración
+    function mostrarFormularioConfig() {
+      document.getElementById('water-config-section').classList.remove('hidden');
+    }
+    
+    function ocultarFormularioConfig() {
+      document.getElementById('water-config-section').classList.add('hidden');
+    }
+    
+    // Cargar configuración del lote
+    function cargarConfiguracionLote() {
+      const config = localStorage.getItem('waterConfig');
+      if (config) {
+        waterConfig = JSON.parse(config);
+        
+        // Rellenar formulario con valores guardados
+        document.getElementById('lote-nombre').value = waterConfig.nombre || '';
+        document.getElementById('lote-superficie').value = waterConfig.superficie || '';
+        document.getElementById('fecha-siembra').value = waterConfig.fechaSiembra || '';
+        document.getElementById('tipo-suelo').value = waterConfig.tipoSuelo || 'franco';
+        document.getElementById('profundidad-raiz').value = waterConfig.profundidadRaiz || '100';
+        document.getElementById('sistema-riego').value = waterConfig.sistemaRiego || 'aspersion';
+        document.getElementById('caudal-riego').value = waterConfig.caudal || '500';
+        document.getElementById('umbral-alerta').value = waterConfig.umbralAlerta || '50';
+        document.getElementById('etapa-fenologica').value = waterConfig.etapaFenologica || 'desarrollo';
+      }
+      if (!waterConfig.thetaFC) waterConfig.thetaFC = 1.8;
+      if (!waterConfig.thetaWP) waterConfig.thetaWP = 0.8;
+      if (!waterConfig.p) waterConfig.p = 0.45;
+    }
+    
+    // Guardar configuración del lote
+    function guardarConfiguracionLote() {
+      waterConfig = {
+        nombre: document.getElementById('lote-nombre').value,
+        superficie: parseFloat(document.getElementById('lote-superficie').value),
+        fechaSiembra: document.getElementById('fecha-siembra').value,
+        tipoSuelo: document.getElementById('tipo-suelo').value,
+        profundidadRaiz: parseInt(document.getElementById('profundidad-raiz').value),
+        sistemaRiego: document.getElementById('sistema-riego').value,
+        caudal: parseInt(document.getElementById('caudal-riego').value),
+        umbralAlerta: parseInt(document.getElementById('umbral-alerta').value),
+        etapaFenologica: document.getElementById('etapa-fenologica').value,
+        thetaFC: parseFloat(document.getElementById('theta-fc').value),
+        thetaWP: parseFloat(document.getElementById('theta-wp').value),
+        p: parseFloat(document.getElementById('p-value').value)
+      };
+      
+      localStorage.setItem('waterConfig', JSON.stringify(waterConfig));
+      alert('Configuración guardada correctamente');
+      calcularBalanceHidrico();
+      ocultarFormularioConfig();
+      cargarBalanceHidrico();
+    }
+    
+    // Calcular capacidad de almacenamiento útil (CAU)
+    function calcularCAU() {
+      if (!waterConfig) return 0;
+      
+      // Valores típicos de capacidad de campo según tipo de suelo (mm/cm)
+      const capacidades = {
+        'arenoso': 1.0,
+        'franco': 1.8,
+        'arcilloso': 2.2
+      };
+      
+      const capacidadCampo = capacidades[waterConfig.tipoSuelo] || 1.8;
+      return capacidadCampo * waterConfig.profundidadRaiz;
+    }
+    
+    // Obtener datos reales del clima desde OpenWeather
+    async function obtenerDatosClimaReales() {
+      try {
+        if (!ubicacionGuardada) return null;
+        
+        // Obtener datos meteorológicos actuales
+        const urlClima = `https://api.openweathermap.org/data/2.5/weather?lat=${ubicacionGuardada.lat}&lon=${ubicacionGuardada.lng}&units=metric&lang=es&appid=${apiKey}`;
+        const response = await fetch(urlClima);
+        
+        if (!response.ok) throw new Error('Error en API del clima');
+        
+        const data = await response.json();
+        
+        // Obtener lluvia (si está disponible)
+        const lluvia = data.rain ? data.rain['1h'] || 0 : 0;
+        
+        // Calcular evapotranspiración aproximada (ET0) usando fórmula simplificada
+        const temp = data.main.temp;
+        const humedad = data.main.humidity;
+        const viento = data.wind.speed;
+        const radiacion = data.clouds ? 100 - data.clouds.all : 50; // Estimación de radiación solar
+        
+        // Fórmula de evapotranspiración
+        const et0 = 0.0023 * (temp + 17.8) * Math.sqrt(temp) * (radiacion/100) * 0.408;
+        
+        return {
+          lluvia: parseFloat(lluvia.toFixed(1)),
+          et0: parseFloat(et0.toFixed(1)),
+          temperatura: temp,
+          humedad: humedad
+        };
+        
+      } catch (error) {
+        console.error('Error al obtener datos del clima:', error);
+        return null;
+      }
+    }
+    
+    // Nueva función para cargar datos de balance hídrico
+    function cargarBalanceHidrico() {
+      try {
+        // Cargar configuración
+        cargarConfiguracionLote();
+        
+        // Actualizar timestamp
+        actualizarTimestamp();
+        
+        // Si no hay configuración, mostrar solo el formulario
+        if (!waterConfig) {
+          mostrarFormularioConfig();
+          return;
+        }
+        
+        // Ocultar formulario si hay configuración
+        ocultarFormularioConfig();
+        
+        // Calcular valores
+        calcularBalanceHidrico();
+        
+      } catch (error) {
+        console.error('Error al cargar balance hídrico:', error);
+      }
+    }
+    
+    // Calcular balance hídrico
+    async function calcularBalanceHidrico() {
+      if (!waterConfig) return;
+      
+      try {
+        const TAW = calcularTAW();
+        const RAW = calcularRAW();
+        const hoy = new Date().toISOString().split('T')[0];
+        
+        cargarHistorial();
+        
+        let registroHoy = waterHistory.find(r => r.fecha === hoy);
+        
+        if (!registroHoy) {
+          // Calcular ET₀ con manejo de errores
+          let ET0;
+          try {
+            ET0 = await calcularET0_PenmanMonteith();
+          } catch (error) {
+            console.error("Error calculando ET0, usando valor por defecto", error);
+            ET0 = 5.0; // Valor por defecto seguro
+          }
+          
+          const Kc = getKc(waterConfig.etapaFenologica);
+          const ETc = Kc * ET0;
+          
+          // Obtener lluvia real
+          const datosClima = await obtenerDatosClimaReales();
+          const lluvia = datosClima?.lluvia || 0;
+          
+          // Buscar registro anterior
+          const ayer = new Date();
+          ayer.setDate(ayer.getDate() - 1);
+          const fechaAyer = ayer.toISOString().split('T')[0];
+          const registroAyer = waterHistory.find(r => r.fecha === fechaAyer);
+          
+          // Calcular agua en suelo anterior
+          const aguaSueloAnterior = registroAyer ? registroAyer.aguaSuelo : TAW * 0.7;
+          
+          // Calcular AD (déficit actual) - CORRECCIÓN CLAVE
+          const AD = Math.max(0, TAW - aguaSueloAnterior);
+          
+          // Calcular Ks y ETr
+          const Ks = calcularKs(AD, TAW, RAW);
+          const ETr = ETc * Ks;
+          
+          // Calcular nuevo agua en suelo - CORRECCIÓN CLAVE
+          let nuevaAguaSuelo = aguaSueloAnterior + lluvia - ETr;
+          let drenaje = 0;
+          
+          // Controlar límites
+          if (nuevaAguaSuelo > TAW) {
+            drenaje = nuevaAguaSuelo - TAW;
+            nuevaAguaSuelo = TAW;
+          } else if (nuevaAguaSuelo < 0) {
+            nuevaAguaSuelo = 0;
+          }
+          
+          // Calcular nuevo AD
+          const nuevoAD = TAW - nuevaAguaSuelo;
+          
+          // Crear nuevo registro
+          registroHoy = {
+            fecha: hoy,
+            ET0: ET0,
+            ETc: ETc,
+            ETr: ETr,
+            lluvia: lluvia,
+            riego: 0,
+            aguaSuelo: nuevaAguaSuelo,
+            capacidadMax: TAW,
+            drenaje: drenaje,
+            AD: nuevoAD,
+            Ks: Ks
+          };
+          
+          waterHistory.push(registroHoy);
+        }
+        
+        // Ajustar valores si superan capacidad máxima
+        if (registroHoy.aguaSuelo > TAW) {
+          registroHoy.drenaje += registroHoy.aguaSuelo - TAW;
+          registroHoy.aguaSuelo = TAW;
+          registroHoy.AD = 0;
+        } else {
+          registroHoy.AD = TAW - registroHoy.aguaSuelo;
+        }
+        
+        // Guardar cambios
+        guardarHistorial();
+        actualizarUI(registroHoy);
+        
+      } catch (error) {
+        console.error("Error crítico en balance hídrico:", error);
+        // Mostrar mensaje de error en UI
+        document.getElementById('water-alert-text').textContent = 
+          "Error en cálculo. Recargue la página.";
+      }
+    }
+    
+    // Calcular días sin regar
+    function calcularDiasSinRegar() {
+      let dias = 0;
+      for (let i = waterHistory.length - 1; i >= 0; i--) {
+        if (waterHistory[i].riego > 0) break;
+        dias++;
+      }
+      return dias;
+    }
+    
+    // Calcular días hasta próximo riego
+    function calcularDiasProximoRiego(porcentajeAgua, etc) {
+      if (!waterConfig) return 0;
+      
+      const umbral = waterConfig.umbralAlerta;
+      if (porcentajeAgua <= umbral) return 0;
+      
+      const cau = calcularCAU();
+      const aguaDisponible = ((porcentajeAgua - umbral) / 100) * cau;
+      
+      // Manejar caso cuando etc es 0
+      if (isNaN(aguaDisponible)) return 0;
+      if (etc <= 0) return 99; 
+      return Math.max(0, Math.floor(aguaDisponible / etc));
+    }
+    
+    // Actualizar alerta de estado
+    function actualizarAlertaEstado(AD, RAW) {
+      const alerta = document.getElementById('water-alert');
+      const texto = document.getElementById('water-alert-text');
+      
+      // Si no tenemos datos suficientes
+      if (RAW === 0 || AD === undefined) {
+        alerta.className = 'water-alert alert-warning';
+        texto.textContent = 'Calculando estado del lote...';
+        return;
+      }
+      
+      if (AD < RAW * 0.3) {
+        alerta.className = 'water-alert alert-good';
+        texto.textContent = 'Óptimo - Suelo con humedad adecuada';
+      } else if (AD < RAW) {
+        alerta.className = 'water-alert alert-warning';
+        texto.textContent = 'Atención - Monitorear déficit hídrico';
+      } else {
+        alerta.className = 'water-alert alert-danger';
+        texto.textContent = 'Alerta - Estrés hídrico detectado';
+      }
+    }
+    
+    // Actualizar recomendación
+    function actualizarRecomendacion(registro, diasProximoRiego) {
+      const recomendacion = document.getElementById('recomendacion-riego');
+      const volumen = document.getElementById('volumen-riego');
+      
+      if (diasProximoRiego > 3) {
+        recomendacion.textContent = 'No se requiere riego. Humedad óptima';
+        volumen.textContent = '';
+      } else {
+        const mmNecesarios = registro.AD * 0.8; // Recuperar 80% del déficit
+        const m3Necesarios = mmNecesarios * waterConfig.superficie * 10;
+        
+        recomendacion.textContent = `Aplicar riego de ${mmNecesarios.toFixed(1)} mm`;
+        volumen.textContent = `Volumen necesario: ${m3Necesarios.toFixed(1)} m³`;
+      }
+    }
+    
+    // Actualizar cálculo de riego
+    function actualizarCalculoRiego() {
+      const riegoMm = document.getElementById('riego-mm');
+      const riegoMin = document.getElementById('riego-min');
+      
+      // Función para actualizar el resultado
+      function actualizarResultado() {
+        if (!waterConfig) return;
+        
+        const mm = parseFloat(riegoMm.value) || 0;
+        const volumen = mm * waterConfig.superficie * 10; // m³
+        
+        const resultado = document.getElementById('riego-calculado');
+        resultado.textContent = `Equivalente a: ${mm.toFixed(1)} mm | Volumen aplicado: ${volumen.toFixed(1)} m³`;
+      }
+      
+      // Sincronizar mm y minutos
+      riegoMm.addEventListener('input', function() {
+        if (!waterConfig) return;
+        const mm = parseFloat(this.value) || 0;
+        const minutos = (mm * waterConfig.superficie * 10000) / waterConfig.caudal;
+        riegoMin.value = minutos.toFixed(0);
+        actualizarResultado();
+      });
+      
+      riegoMin.addEventListener('input', function() {
+        if (!waterConfig) return;
+        const minutos = parseFloat(this.value) || 0;
+        const mm = (minutos * waterConfig.caudal) / (waterConfig.superficie * 10000);
+        riegoMm.value = mm.toFixed(1);
+        actualizarResultado();
+      });
+      
+      // Actualizar inicialmente
+      actualizarResultado();
+    }
+    
+    function actualizarResultadoRiego(mm) {
+      if (!waterConfig) return;
+      
+      const volumen = mm * waterConfig.superficie * 10; // m³
+      const resultado = document.getElementById('riego-calculado');
+      resultado.textContent = `Equivalente a: ${mm.toFixed(1)} mm | Volumen aplicado: ${volumen.toFixed(1)} m³`;
+    }
+    
+    // Registrar riego
+    function registrarRiego() {
+      const hoy = new Date().toISOString().split('T')[0];
+      const registroHoy = waterHistory.find(r => r.fecha === hoy);
+      
+      if (registroHoy) {
+        const mm = parseFloat(document.getElementById('riego-mm').value);
+        registroHoy.riego += mm;
+        registroHoy.aguaSuelo += mm;
+        
+        // Verificar drenaje
+        const cau = calcularCAU();
+        if (registroHoy.aguaSuelo > cau) {
+          registroHoy.drenaje += registroHoy.aguaSuelo - cau;
+          registroHoy.aguaSuelo = cau;
+        }
+        
+        guardarHistorial();
+        calcularBalanceHidrico();
+        alert(`Riego de ${mm} mm registrado correctamente`);
+      }
+    }
+    
+    async function calcularET0_PenmanMonteith() {
+      try {
+        const ubicacionGuardada = JSON.parse(localStorage.getItem('ubicacion'));
+        if (!ubicacionGuardada) return 0;
+
+        const url = `https://api.openweathermap.org/data/2.5/weather?lat=${ubicacionGuardada.lat}&lon=${ubicacionGuardada.lng}&units=metric&appid=${apiKey}`;
+        const response = await fetch(url);
+        const data = await response.json();
+
+        // Constantes y parámetros
+        const G = 0; // Flujo calor suelo (asumido 0 para cálculos diarios)
+        const T = data.main.temp;
+        const u2 = data.wind.speed; // Velocidad viento en m/s (a 10m altura)
+        const HR = data.main.humidity;
+        const nubosidad = data.clouds ? data.clouds.all : 50;
+        
+        if (typeof T === 'undefined' || typeof HR === 'undefined' || typeof u2 === 'undefined') {
+          throw new Error("Datos meteorológicos incompletos");
+        }
+
+        // Pendiente de la curva de presión de vapor (Δ)
+        const delta = (4098 * (0.6108 * Math.exp((17.27 * T) / (T + 237.3)))) 
+                    / Math.pow((T + 237.3), 2);
+
+        // Presión de vapor real (ea)
+        const es = 0.6108 * Math.exp(17.27 * T / (T + 237.3));
+        const ea = (HR / 100) * es;
+
+        // Radiación neta (Rn) - Estimada desde nubosidad
+        const Rs = (0.25 + 0.5 * (1 - nubosidad/100)) * 30; // MJ/m²/día
+        const Rns = 0.77 * Rs;
+        const Rnl = 4.903e-9 * Math.pow(T + 273, 4) * (0.34 - 0.14 * Math.sqrt(ea)) * (1.35 * Rs/30 - 0.35);
+        const Rn = Rns - Rnl;
+
+        // Constante psicrométrica (γ)
+        const P = data.main.pressure / 10; // kPa
+        const gamma = 0.665 * 0.001 * P;
+
+        // Ajuste velocidad viento a 2m altura
+        const u2_ajust = u2 * 4.87 / Math.log(67.8 * 10 - 5.42);
+
+        // Cálculo final ET₀
+        const numerador = 0.408 * delta * (Rn - G) + gamma * (900 / (T + 273)) * u2_ajust * (es - ea);
+        const denominador = delta + gamma * (1 + 0.34 * u2_ajust);
+        
+        return numerador / denominador;
+      } catch (error) {
+        console.error("Error en cálculo ET0:", error);
+        return 4.5 + (Math.random() * 2); 
+      }
+    }
+
+    // Cálculo de TAW y RAW
+    function calcularTAW() {
+      if (!waterConfig) return 0;
+      
+      // Usar las propiedades CORRECTAS: waterConfig.thetaFC y waterConfig.thetaWP
+      const thetaFC = parseFloat(waterConfig.thetaFC);
+      const thetaWP = parseFloat(waterConfig.thetaWP);
+      const zr = parseInt(waterConfig.profundidadRaiz);
+      
+      // Validar que sean números
+      if (isNaN(thetaFC) || isNaN(thetaWP) || isNaN(zr)) return 0;
+      
+      return (thetaFC - thetaWP) * zr;
+    }
+
+    function calcularRAW() {
+      return waterConfig.p * calcularTAW();
+    }
+
+    // Cálculo de Ks (Coeficiente de estrés)
+    function calcularKs(AD, TAW, RAW) {
+      if (AD <= RAW) {
+        return 1.0; // Sin estrés hídrico
+      } else if (TAW > RAW) {
+        return (TAW - AD) / (TAW - RAW);
+      } else {
+        return 0.5; // Valor seguro si hay error
+      }
+    }
+
+    // Obtener Kc según etapa fenológica
+    function getKc(etapa) {
+      const kcValues = {
+        'inicial': 0.4,
+        'desarrollo': 0.7,
+        'floracion': 1.05,
+        'madurez': 0.8,
+        'cosecha': 0.6
+      };
+      return kcValues[etapa] || 0.7;
+    }
+
+    // Cargar historial
+    function cargarHistorial() {
+      const historial = localStorage.getItem('waterHistory');
+      waterHistory = historial ? JSON.parse(historial) : [];
+      
+      // Inicializar propiedades faltantes para compatibilidad
+      waterHistory.forEach(registro => {
+        registro.ET0 = registro.ET0 || 0;
+        registro.ETc = registro.ETc || 0;
+        registro.ETr = registro.ETr || 0;
+        registro.AD = registro.AD || 0;
+        registro.Ks = registro.Ks || 1;
+        registro.drenaje = registro.drenaje || 0;
+      });
+    }
+    
+    // Guardar historial
+    function guardarHistorial() {
+      localStorage.setItem('waterHistory', JSON.stringify(waterHistory));
+    }
+    
+    // Actualizar gráficos
+    function actualizarGraficos() {
+      // Datos para gráficos (últimos 30 días)
+      const fechas = [];
+      const nivelesAgua = [];
+      const lluvias = [];
+      const riegos = [];
+      const et0s = [];
+      
+      const hoy = new Date();
+      for (let i = 29; i >= 0; i--) {
+        const fecha = new Date();
+        fecha.setDate(hoy.getDate() - i);
+        const fechaStr = fecha.toISOString().split('T')[0];
+        
+        const registro = waterHistory.find(r => r.fecha === fechaStr);
+        if (registro) {
+          fechas.push(fechaStr);
+          nivelesAgua.push(registro.aguaSuelo);
+          lluvias.push(registro.lluvia);
+          riegos.push(registro.riego);
+          et0s.push(registro.et0);
+        }
+      }
+      
+      // Crear gráfico de niveles de agua
+      const ctx1 = document.getElementById('water-level-chart').getContext('2d');
+      if (waterLevelChart) waterLevelChart.destroy();
+      
+      waterLevelChart = new Chart(ctx1, {
+        type: 'line',
+        data: {
+          labels: fechas,
+          datasets: [{
+            label: 'Agua en el suelo (mm)',
+            data: nivelesAgua,
+            borderColor: '#4a90e2',
+            backgroundColor: 'rgba(74, 144, 226, 0.1)',
+            fill: true,
+            tension: 0.3
+          }]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          scales: {
+            y: {
+              beginAtZero: true,
+              title: {
+                display: true,
+                text: 'mm'
+              }
+            }
+          }
+        }
+      });
+      
+      // Crear gráfico de entradas/salidas
+      const ctx2 = document.getElementById('water-flow-chart').getContext('2d');
+      if (waterFlowChart) waterFlowChart.destroy();
+      
+      waterFlowChart = new Chart(ctx2, {
+        type: 'bar',
+        data: {
+          labels: fechas,
+          datasets: [
+            {
+              label: 'Lluvia (mm)',
+              data: lluvias,
+              backgroundColor: 'rgba(54, 162, 235, 0.6)'
+            },
+            {
+              label: 'Riego (mm)',
+              data: riegos,
+              backgroundColor: 'rgba(75, 192, 192, 0.6)'
+            },
+            {
+              label: 'Evapotranspiración (mm)',
+              data: et0s,
+              backgroundColor: 'rgba(255, 99, 132, 0.6)'
+            }
+          ]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          scales: {
+            y: {
+              beginAtZero: true,
+              stacked: false,
+              title: {
+                display: true,
+                text: 'mm'
+              }
+            },
+            x: {
+              stacked: true
+            }
+          }
+        }
+      });
+    }
+    
+    function actualizarUI(registro) {
+      // Validar registro
+      if (!registro) return;
+      
+      // Función segura para valores numéricos
+      const safeNumber = (val, def = 0) => (isNaN(val) ? def : val);
+      
+      // Calcular valores base
+      const TAW = safeNumber(calcularTAW(), 100);
+      const RAW = safeNumber(calcularRAW(), 45);
+      
+      // Obtener valores seguros
+      const aguaSuelo = safeNumber(registro.aguaSuelo, TAW * 0.7);
+      const AD = safeNumber(registro.AD, 0);
+      const ETr = safeNumber(registro.ETr, 0);
+      
+      // Calcular porcentaje evitando división por cero
+      const porcentajeAgua = TAW > 0 ? (aguaSuelo / TAW) * 100 : 0;
+      
+      // Actualizar UI
+      document.getElementById('agua-disponible-mm').textContent = aguaSuelo.toFixed(1) + ' mm';
+      document.getElementById('agua-disponible-porc').textContent = porcentajeAgua.toFixed(1) + '%';
+      document.getElementById('reserva-agua').textContent = TAW > 0 ? ((RAW / TAW) * 100).toFixed(1) + '%' : '0%';
+      document.getElementById('capacidad-total').textContent = TAW.toFixed(1) + ' mm';
+      
+      // Calcular días sin regar
+      const diasSinRegar = calcularDiasSinRegar();
+      document.getElementById('dias-sin-regar').textContent = diasSinRegar;
+      
+      // Calcular próximo riego
+      const diasProximoRiego = registro.ETc > 0 
+        ? Math.max(0, Math.floor((RAW - AD) / registro.ETc))
+        : 7; // Valor por defecto si no hay ETc
+      document.getElementById('dias-proximo-riego').textContent = diasProximoRiego + ' días';
+      
+      // Actualizar alertas y recomendaciones
+      actualizarAlertaEstado(registro.AD, RAW);
+      actualizarRecomendacion(registro, diasProximoRiego);
+      
+      // Actualizar valores adicionales
+      document.getElementById('taw-display').textContent = TAW.toFixed(1) + ' mm';
+      document.getElementById('raw-display').textContent = RAW.toFixed(1) + ' mm';
+      document.getElementById('ad-display').textContent = AD.toFixed(1) + ' mm';
+      document.getElementById('etr-display').textContent = ETr.toFixed(1) + ' mm';
+      
+      // Actualizar gráficos e historial
+      actualizarGraficos();
+      actualizarHistorial();
+    }
+
+    //Resetear pagina 7 
+    function resetearLote() {
+      if (confirm('¿Está seguro que desea resetear toda la información del lote? Esta acción no se puede deshacer.')) {
+        localStorage.removeItem('waterConfig');
+        localStorage.removeItem('waterHistory');
+        waterConfig = null;
+        waterHistory = [];
+        cargarBalanceHidrico();
+        mostrarFormularioConfig();
+        alert('Información del lote reseteada correctamente');
+      }
+    }
+
+    // Actualizar historial
+    function actualizarHistorial() {
+      const tbody = document.getElementById('water-history-body');
+      tbody.innerHTML = '';
+      
+      const safeValue = (val) => (val !== undefined ? val.toFixed(1) : '0.0');
+
+      waterHistory.slice(-7).reverse().forEach(registro => {
+        const row = document.createElement('tr');
+        row.innerHTML = `
+          <td>${registro.fecha}</td>
+          <td>${safeValue(registro.lluvia)}</td>
+          <td>${safeValue(registro.ET0)}</td>
+          <td>${safeValue(registro.ETc)}</td>
+          <td>${safeValue(registro.ETr)}</td>
+          <td>${safeValue(registro.riego)}</td>
+          <td>${safeValue(registro.aguaSuelo)}</td>
+          <td>${safeValue(registro.AD)}</td>
+          <td>${safeValue(registro.drenaje)}</td>
+        `;
+        tbody.appendChild(row);
+      });
+    }
+  </script>
+</body>
+</html>
